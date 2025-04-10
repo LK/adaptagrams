@@ -9,8 +9,6 @@
  * */
 
 
-const int CONNECTIONPIN_INCOMING = 111;
-
 class NudgingOrthogonalRouter : public ::testing::Test {
 protected:
     void SetUp() override {
@@ -53,6 +51,8 @@ protected:
 };
 
 TEST_F(NudgingOrthogonalRouter, Multiple) {
+    // currently this test also checks whether routing with nudging doesn't crash in this particular case.
+    // (reproduces https://github.com/Aksem/adaptagrams/issues/24 )
     int w = 120;
     int h = 120;
 
@@ -68,23 +68,7 @@ TEST_F(NudgingOrthogonalRouter, Multiple) {
     Avoid::ShapeRef *shapeRef10 = addChild({ 320, 2245 }, { 320.0 + w, 2245.0 + h });
     Avoid::ShapeRef *shapeRef11 = addChild({ 640, 25 }, { 640.0 + w, 25.0 + h });
     Avoid::ShapeRef *shapeRef12 = addChild({ 320, 25 }, { 320.0 + w, 25.0 + h });
-    Avoid::ShapeRef *shapeRef13 = addChild({ 0, 1900 }, { 0.0 + w, 1900.0 + h });
-    Avoid::ShapeRef *shapeRef14 = addChild({ 960, 2560 }, { 960.0 + w, 2560.0 + h });
-    Avoid::ShapeRef *shapeRef15 = addChild({ 640, 2522.5 }, { 640.0 + w, 2522.5 + h });
-    Avoid::ShapeRef *shapeRef16 = addChild({ 640, 362.5 }, { 640.0 + w, 362.5 + h });
-    Avoid::ShapeRef *shapeRef17 = addChild({ 960, 532.5 }, { 960.0 + w, 532.5 + h });
-    Avoid::ShapeRef *shapeRef18 = addChild({ 640, 532.5 }, { 640.0 + w, 532.5 + h });
-    Avoid::ShapeRef *shapeRef19 = addChild({ 0, 510 }, { 0.0 + w, 510.0 + h });
-    Avoid::ShapeRef *shapeRef20 = addChild({ 0, 680 }, { 0.0 + w, 680.0 + h });
-    Avoid::ShapeRef *shapeRef21 = addChild({ 640, 702.5 }, { 640.0 + w, 702.5 + h });
-    Avoid::ShapeRef *shapeRef22 = addChild({ 1280, 1737 }, { 1280.0 + w, 1737.0 + h });
-    Avoid::ShapeRef *shapeRef23 = addChild({ 1280, 2950 }, { 1280.0 + w, 2950.0 + h });
-    Avoid::ShapeRef *shapeRef24 = addChild({ 0, 1090 }, { 0.0 + w, 1090.0 + h });
-    Avoid::ShapeRef *shapeRef25 = addChild({ 640, 872 }, { 640.0 + w, 872.0 + h });
-    Avoid::ShapeRef *shapeRef26 = addChild({ 320, 1245 }, { 320.0 + w, 1245.0 + h });
-    Avoid::ShapeRef *shapeRef27 = addChild({ 0, 1260 }, { 0.0 + w, 1260.0 + h });
 
-    std::vector<Avoid::ShapeRef *> allShapes = { shapeRef1, shapeRef2, shapeRef3, shapeRef4, shapeRef5, shapeRef6, shapeRef7, shapeRef8, shapeRef9, shapeRef10, shapeRef11, shapeRef12, shapeRef13, shapeRef14, shapeRef15, shapeRef16, shapeRef17, shapeRef18, shapeRef19, shapeRef20, shapeRef21, shapeRef22, shapeRef23, shapeRef24, shapeRef25, shapeRef26, shapeRef27 };
     std::vector<Avoid::ShapeRef *> shapes = { shapeRef1, shapeRef2, shapeRef3, shapeRef4, shapeRef5, shapeRef6, shapeRef7, shapeRef8, shapeRef9, shapeRef10, shapeRef11, shapeRef12 };
 
     int numConnections = 2;
@@ -110,7 +94,7 @@ TEST_F(NudgingOrthogonalRouter, Multiple) {
         router->deleteConnector(conn);
     }
 
-    for (Avoid::ShapeRef *shapeRef : allShapes)
+    for (Avoid::ShapeRef *shapeRef : shapes)
     {
         router->deleteShape(shapeRef);
     }

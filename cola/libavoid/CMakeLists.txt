@@ -5,6 +5,7 @@ project(avoid)
 option(LIBAVOID_DEBUG "Libavoid debug logs" OFF)
 option(PATH_DEBUG "Routing path debug logs" OFF)
 option(NUDGE_DEBUG "Debug nudging" OFF)
+option(DEBUG_JUST_UNIFY "Debug just unify nudging" OFF)
 option(ESTIMATED_COST_DEBUG "Debug estimated cost" OFF)
 option(ASTAR_DEBUG "Debug ASTAR" OFF)
 
@@ -170,6 +171,7 @@ if (BUILD_TESTING)
         moveShapeConnectionPins
         mixedConnTypes
         orthogonal/hierarchical
+        orthogonal/nudging
     )
     foreach(TEST_CASE IN LISTS NEW_TEST_CASES)
         set(TARGET_NAME "")

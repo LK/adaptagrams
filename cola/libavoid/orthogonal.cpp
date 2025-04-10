@@ -42,10 +42,6 @@
 #include "libavoid/scanline.h"
 #include "libavoid/debughandler.h"
 
-// For debugging:
-//#define NUDGE_DEBUG
-//#define DEBUG_JUST_UNIFY
-
 
 namespace Avoid {
 
@@ -2905,9 +2901,14 @@ void ImproveOrthogonalRoutes::nudgeOrthogonalRoutes(size_t dimension,
                         if (vs[i]->id == channelLeftID)
                         {
                             // This is the left-hand-side of a channel.
-                            if (unsatisfiedRanges.empty() ||
+                            if ((unsatisfiedRanges.empty() ||
                                     (unsatisfiedRanges.back().first !=
                                     unsatisfiedRanges.back().second))
+                                    // the next variable can also have id different from `channelRightID`
+                                    // e.g. see `orthogonal/nudging` test, there is a case when the next node has id
+                                    // `freeSegmentID`. Why?
+                                    // Nevertheless, this filtering doesn't affect end result.
+                                    && vs[i + 1]->id == channelRightID)
                             {
                                 // There are no existing unsatisfied ranges,
                                 // or there are but they are a valid range
