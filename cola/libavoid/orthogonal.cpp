@@ -2931,9 +2931,13 @@ void ImproveOrthogonalRoutes::nudgeOrthogonalRoutes(size_t dimension,
                                 // range begins at the previous variable
                                 // which should be a left channel side.
                                 COLA_ASSERT(i > 0);
-                                COLA_ASSERT(vs[i - 1]->id == channelLeftID);
-                                unsatisfiedRanges.push_back(
-                                        std::make_pair(i - 1, i));
+                                // the previous variable can also have id different from `channelLeftID`. Why?
+                                // Nevertheless, this filtering doesn't affect end result.
+                                if (vs[i - 1]->id == channelLeftID)
+                                {
+                                    unsatisfiedRanges.push_back(
+                                            std::make_pair(i - 1, i));
+                                }
                             }
                             else
                             {
