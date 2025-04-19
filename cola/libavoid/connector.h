@@ -29,6 +29,8 @@
 #ifndef AVOID_CONNECTOR_H
 #define AVOID_CONNECTOR_H
 
+#include <cstdint>
+#include <functional>
 #include <utility>
 #include <list>
 #include <vector>
@@ -111,6 +113,7 @@ class AVOID_EXPORT Checkpoint
         ConnDirFlags departureDirections;
 };
 
+using ConnRefCallbackFunction = std::function<void(uintptr_t)>;
 
 //! @brief   The ConnRef class represents a connector object.
 //!
@@ -269,6 +272,22 @@ class AVOID_EXPORT ConnRef
         //! @param[in]  ptr  A generic pointer that will be passed to the 
         //!                  callback function.
         void setCallback(void (*cb)(void *), void *ptr);
+
+        //! @brief   Sets a callback function that will called to indicate that
+        //!          the connector needs rerouting.
+        //!
+        //! The cb function will be called when shapes are added to, removed
+        //! from or moved about on the page.  The pointer ptr will be passed
+        //! as an argument to the callback function.
+        //!
+        //! It's a more modern alternative for `setCallback` method, especially
+        //! useful for creating bindings(e.g. embind doesn't support raw void*
+        //! pointers).
+        //!
+        //! @param[in]  cb   A pointer to the callback function.
+        //! @param[in]  data  A generic pointer that will be passed to the
+        //!                  callback function.
+        void setCallbackFunction(ConnRefCallbackFunction cb, uintptr_t data);
         
         //! @brief   Returns the type of routing performed for this connector.
         //! @return  The type of routing performed.
@@ -460,6 +479,8 @@ class AVOID_EXPORT ConnRef
         VertInf *m_start_vert;
         void (*m_callback_func)(void *);
         void *m_connector;
+        ConnRefCallbackFunction m_callback_function;
+        uintptr_t m_callback_data;
         ConnEnd *m_src_connend;
         ConnEnd *m_dst_connend;
         std::vector<Checkpoint> m_checkpoints;

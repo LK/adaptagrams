@@ -778,12 +778,22 @@ void ConnRef::setCallback(void (*cb)(void *), void *ptr)
     m_connector = ptr;
 }
 
+void ConnRef::setCallbackFunction(ConnRefCallbackFunction cb, uintptr_t data)
+{
+    m_callback_function = cb;
+    m_callback_data = data;
+}
+
 
 void ConnRef::performCallback(void)
 {
     if (m_callback_func)
     {
         m_callback_func(m_connector);
+    }
+    if (m_callback_function)
+    {
+        m_callback_function(m_callback_data);
     }
 }
 
