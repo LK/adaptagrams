@@ -22,6 +22,7 @@
  * Author(s):  Michael Wybrow
 */
 
+
 #include <cstdlib>
 #include <cfloat>
 #include <cmath>
@@ -42,7 +43,7 @@
 #include "libavoid/debughandler.h"
 
 // For debugging:
-#define NUDGE_DEBUG
+//#define NUDGE_DEBUG
 //#define DEBUG_JUST_UNIFY
 
 
@@ -3143,10 +3144,12 @@ void ImproveOrthogonalRoutes::nudgeOrthogonalRoutes(size_t dimension,
                 }
                 fprintf(stderr, "\n");
             }
+#endif
             
             IncSolver f(vs, cs);
             f.solve();
-            
+
+#ifdef NUDGE_DEBUG
             // Log variables after solving
             fprintf(stderr, "  Variables after solving:\n");
             for (size_t i = 0; i < vs.size(); ++i)
