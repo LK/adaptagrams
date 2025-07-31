@@ -22,7 +22,6 @@
  * Author(s):  Michael Wybrow
 */
 
-
 #include <cstdlib>
 #include <cfloat>
 #include <cmath>
@@ -41,6 +40,10 @@
 #include "libavoid/assertions.h"
 #include "libavoid/scanline.h"
 #include "libavoid/debughandler.h"
+
+// For debugging:
+#define NUDGE_DEBUG
+//#define DEBUG_JUST_UNIFY
 
 
 namespace Avoid {
@@ -308,6 +311,10 @@ class NudgingShiftSegment : public ShiftSegment
             const Point& highPt = highPoint();
             const Point& rhsLowPt = rhs->lowPoint();
             const Point& rhsHighPt = rhs->highPoint();
+            
+            // DIAGNOSTIC LOGGING: Start of overlap check
+            bool result = false;
+            
             if ( (lowPt[altDim] < rhsHighPt[altDim]) &&
                     (rhsLowPt[altDim] < highPt[altDim]))
             {
@@ -315,6 +322,17 @@ class NudgingShiftSegment : public ShiftSegment
                 if ( (minSpaceLimit <= rhs->maxSpaceLimit) &&
                         (rhs->minSpaceLimit <= maxSpaceLimit) )
                 {
+                    result = true;
+#ifdef NUDGE_DEBUG
+                    fprintf(stderr, "[OVERLAP CHECK] Segments OVERLAP (standard case)\n");
+                    fprintf(stderr, "  - Conn %d segment: [%.2f,%.2f] to [%.2f,%.2f]\n",
+                            connRef->id(), lowPt.x, lowPt.y, highPt.x, highPt.y);
+                    fprintf(stderr, "  - Conn %d segment: [%.2f,%.2f] to [%.2f,%.2f]\n",
+                            rhs->connRef->id(), rhsLowPt.x, rhsLowPt.y, rhsHighPt.x, rhsHighPt.y);
+                    fprintf(stderr, "  - Dimension: %zu, altDim: %zu\n", dim, altDim);
+                    fprintf(stderr, "  - Space limits overlap: [%.2f,%.2f] vs [%.2f,%.2f]\n",
+                            minSpaceLimit, maxSpaceLimit, rhs->minSpaceLimit, rhs->maxSpaceLimit);
+#endif
                     return true;
                 }
             }
@@ -328,6 +346,15 @@ class NudgingShiftSegment : public ShiftSegment
                         (rhs->minSpaceLimit <= maxSpaceLimit) )
                 {
                     // The segments could touch at one end.
+#ifdef NUDGE_DEBUG
+                    fprintf(stderr, "[OVERLAP CHECK] Segments are COLLINEAR/TOUCHING\n");
+                    fprintf(stderr, "  - Conn %d segment: [%.2f,%.2f] to [%.2f,%.2f]\n",
+                            connRef->id(), lowPt.x, lowPt.y, highPt.x, highPt.y);
+                    fprintf(stderr, "  - Conn %d segment: [%.2f,%.2f] to [%.2f,%.2f]\n",
+                            rhs->connRef->id(), rhsLowPt.x, rhsLowPt.y, rhsHighPt.x, rhsHighPt.y);
+                    fprintf(stderr, "  - nudgeColinearSegments = %s\n", nudgeColinearSegments ? "true" : "false");
+#endif
+                    
                     if (connRef->router()->routingParameter(
                             fixedSharedPathPenalty) > 0)
                     {
@@ -335,6 +362,9 @@ class NudgingShiftSegment : public ShiftSegment
                         // then we don't want these segments to ever touch
                         // or slide past each other, so they are always
                         // considered to be overlapping.
+#ifdef NUDGE_DEBUG
+                        fprintf(stderr, "  - Result: OVERLAP (fixedSharedPathPenalty > 0)\n");
+#endif
                         return true;
                     }
                     else if ((rhs->sBend && sBend) || (rhs->zBend && zBend))
@@ -342,16 +372,35 @@ class NudgingShiftSegment : public ShiftSegment
                         // Count them as overlapping for nudging if they
                         // are both s-bends or both z-bends, i.e., when
                         // the ordering would matter.
+                        fprintf(stderr, "  - Result: %s (both %s-bends)\n",
+                                nudgeColinearSegments ? "OVERLAP" : "NO OVERLAP",
+                                sBend ? "S" : "Z");
                         return nudgeColinearSegments;
                     }
                     else if ((rhs->finalSegment && finalSegment) &&
                             (rhs->connRef == connRef))
                     {
+                        fprintf(stderr, "  - Result: %s (same connector final segments)\n",
+                                nudgeColinearSegments ? "OVERLAP" : "NO OVERLAP");
                         return nudgeColinearSegments;
                     }
+                    else
+                    {
+#ifdef NUDGE_DEBUG
+                        fprintf(stderr, "  - Result: NO OVERLAP (no special conditions met)\n");
+#endif
+                    }
+                }
+                else
+                {
+#ifdef NUDGE_DEBUG
+                    fprintf(stderr, "[OVERLAP CHECK] Collinear segments but space limits don't overlap\n");
+                    fprintf(stderr, "  - Space limits: [%.2f,%.2f] vs [%.2f,%.2f]\n",
+                            minSpaceLimit, maxSpaceLimit, rhs->minSpaceLimit, rhs->maxSpaceLimit);
+#endif
                 }
             }
-            return false;
+            return result;
         }
         // These segments are allowed to drift into alignment but don't have to.
         bool canAlignWith(const NudgingShiftSegment *rhs,
@@ -777,11 +826,7 @@ public:
         }
         if (!found)
         {
-            VertID vertId = dummyOrthogID;
-            if (shapeSide) {
-                vertId = dummyOrthogShapeID;
-            }
-            found = new VertInf(router, vertId, Point(posX, pos));
+            found = new VertInf(router, dummyOrthogID, Point(posX, pos));
             vertInfs.insert(found);
         }
         return found;
@@ -1437,6 +1482,7 @@ static void processEventVert(Router *router, NodeSet& scanline,
             else
             {
                 // There are overlapping shapes along this shape edge.
+
                 if ((minLimitMax > minLimit) && (minLimitMax >= minShape))
                 {
                     LineSegment *line = segments.insert(
@@ -1589,10 +1635,7 @@ static void processEventHori(Router *router, NodeSet& scanline,
             double maxShape = v->max[YDIM];
             // As far as we can see.
             double minLimit, maxLimit;
-            // minLimitMax - minimal Y value below the shape, if shape has no neighbours below, it's Y value of line below the bottom side of this shape
-            // maxLimitMin - maximal Y value above the shape
             double minLimitMax, maxLimitMin;
-
             v->findFirstPointAboveAndBelow(YDIM, lineX, minLimit, maxLimit,
                     minLimitMax, maxLimitMin);
 
@@ -1810,8 +1853,8 @@ extern void generateStaticOrthogonalVisGraph(Router *router)
     fixConnectionPointVisibilityOnOutsideOfVisibilityGraph(events, totalEvents,
             (ConnDirLeft | ConnDirRight));
 
-    // Process the vertical sweep -- creating candidate horizontal edges.
-    // We do multiple passes over sections of the list, so we can add relevant
+    // Process the vertical sweep -- creating cadidate horizontal edges.
+    // We do multiple passes over sections of the list so we can add relevant
     // entries to the scanline that might follow, before processing them.
     SegmentListWrapper segments;
     NodeSet scanline;
@@ -1861,7 +1904,6 @@ extern void generateStaticOrthogonalVisGraph(Router *router)
     }
 
     segments.list().sort();
-    // DEBUG HELPER: here you can check horizontal lines, see `segments` variable
 
     // Set up the events for the horizontal sweep.
     SegmentListWrapper vertSegments;
@@ -1931,7 +1973,6 @@ extern void generateStaticOrthogonalVisGraph(Router *router)
             {
                 for (unsigned j = posStartIndex; j < posFinishIndex; ++j)
                 {
-                    // DEBUG HELPER: create vertical lines
                     processEventHori(router, scanline, vertSegments,
                             events[j], pass);
                 }
@@ -2630,21 +2671,44 @@ void ImproveOrthogonalRoutes::nudgeOrthogonalRoutes(size_t dimension,
         currentRegion.clear();
         currentRegion.push_back(currentSegment);
         m_segment_list.erase(m_segment_list.begin());
+        
+#ifdef NUDGE_DEBUG
+        // DIAGNOSTIC LOGGING: Track segment grouping
+        NudgingShiftSegment *nudgeSegment = static_cast<NudgingShiftSegment *>(currentSegment);
+        fprintf(stderr, "\n[GROUPING] Starting new region with segment from conn %d\n", 
+                nudgeSegment->connRef->id());
+        fprintf(stderr, "  - Segment: [%.2f,%.2f] to [%.2f,%.2f], dim=%zu\n",
+                currentSegment->lowPoint()[0], currentSegment->lowPoint()[1],
+                currentSegment->highPoint()[0], currentSegment->highPoint()[1], dimension);
+#endif
+        
         for (ShiftSegmentList::iterator curr = m_segment_list.begin();
                 curr != m_segment_list.end(); )
         {
             bool overlaps = false;
+            ShiftSegment *overlappingSegment = nullptr;
             for (ShiftSegmentList::iterator curr2 = currentRegion.begin();
                     curr2 != currentRegion.end(); ++curr2)
             {
                 if ((*curr)->overlapsWith(*curr2, dimension))
                 {
                     overlaps = true;
+                    overlappingSegment = *curr2;
                     break;
                 }
             }
             if (overlaps)
             {
+#ifdef NUDGE_DEBUG
+                NudgingShiftSegment *currNudge = static_cast<NudgingShiftSegment *>(*curr);
+                NudgingShiftSegment *overlapNudge = static_cast<NudgingShiftSegment *>(overlappingSegment);
+                fprintf(stderr, "  [GROUP ADD] Adding segment from conn %d to region (overlaps with conn %d)\n",
+                        currNudge->connRef->id(), overlapNudge->connRef->id());
+                fprintf(stderr, "    - New segment: [%.2f,%.2f] to [%.2f,%.2f]\n",
+                        (*curr)->lowPoint()[0], (*curr)->lowPoint()[1],
+                        (*curr)->highPoint()[0], (*curr)->highPoint()[1]);
+#endif
+                
                 currentRegion.push_back(*curr);
                 m_segment_list.erase(curr);
                 // Consider segments from the beginning, since we may have
@@ -2656,6 +2720,15 @@ void ImproveOrthogonalRoutes::nudgeOrthogonalRoutes(size_t dimension,
                 ++curr;
             }
         }
+        
+#ifdef NUDGE_DEBUG
+        fprintf(stderr, "[GROUPING] Final region has %zu segments\n", currentRegion.size());
+        for (ShiftSegmentList::iterator it = currentRegion.begin(); it != currentRegion.end(); ++it)
+        {
+            NudgingShiftSegment *seg = static_cast<NudgingShiftSegment *>(*it);
+            fprintf(stderr, "  - Conn %d\n", seg->connRef->id());
+        }
+#endif
 
         if (! justUnifying)
         {
@@ -2780,6 +2853,19 @@ void ImproveOrthogonalRoutes::nudgeOrthogonalRoutes(size_t dimension,
                     // segments are fixed in place.
                     double thisSepDist = sepDist;
                     bool equality = false;
+                    
+#ifdef NUDGE_DEBUG
+                    // DIAGNOSTIC LOGGING: Track overlap detection
+                    fprintf(stderr, "[OVERLAP] Segment from conn %d overlaps with segment from conn %d\n",
+                            currSegment->connRef->id(), prevSeg->connRef->id());
+                    fprintf(stderr, "  - currSeg: [%.2f,%.2f] to [%.2f,%.2f], dim=%zu\n",
+                            currSegment->lowPoint()[0], currSegment->lowPoint()[1],
+                            currSegment->highPoint()[0], currSegment->highPoint()[1], dimension);
+                    fprintf(stderr, "  - prevSeg: [%.2f,%.2f] to [%.2f,%.2f]\n",
+                            prevSeg->lowPoint()[0], prevSeg->lowPoint()[1],
+                            prevSeg->highPoint()[0], prevSeg->highPoint()[1]);
+#endif
+                    
                     if (currSegment->shouldAlignWith(prevSeg, dimension))
                     {
                         // Handles the case where the two end segments can
@@ -2788,6 +2874,9 @@ void ImproveOrthogonalRoutes::nudgeOrthogonalRoutes(size_t dimension,
                         // can restrict other kinds of nudging.
                         thisSepDist = 0;
                         equality = true;
+#ifdef NUDGE_DEBUG
+                        fprintf(stderr, "  - ALIGN: shouldAlignWith returned true\n");
+#endif
                     }
                     else if (currSegment->canAlignWith(prevSeg, dimension))
                     {
@@ -2796,6 +2885,9 @@ void ImproveOrthogonalRoutes::nudgeOrthogonalRoutes(size_t dimension,
                         // due only to a kink created in the other dimension.
                         // Here, we let such segments drift back together.
                         thisSepDist = 0;
+#ifdef NUDGE_DEBUG
+                        fprintf(stderr, "  - ALIGN: canAlignWith returned true\n");
+#endif
                     }
                     else if (!nudgeSharedPathsWithCommonEnd &&
                             (m_shared_path_connectors_with_common_endpoints.count(
@@ -2803,17 +2895,91 @@ void ImproveOrthogonalRoutes::nudgeOrthogonalRoutes(size_t dimension,
                     {
                         // We don't want to nudge apart these two segments
                         // since they are from a shared path with a common
-                        // endpoint.  There might be multiple chains of
-                        // segments that don't all have the same endpoints
-                        // so we need to make this an equality to prevent
-                        // some of them possibly getting nudged apart.
-                        thisSepDist = 0;
-                        equality = true;
+                        // endpoint.  However, we should check if they can
+                        // feasibly be at the same position.
+                        
+                        // Check if the segments' movement ranges overlap sufficiently
+                        // But first check if either segment has unrealistic bounds that suggest
+                        // it's a temporary/free-floating segment
+                        const double REALISTIC_BOUND = 10000.0;
+                        bool currHasRealisticBounds = (currSegment->minSpaceLimit > -REALISTIC_BOUND) && 
+                                                      (currSegment->maxSpaceLimit < REALISTIC_BOUND);
+                        bool prevHasRealisticBounds = (prevSeg->minSpaceLimit > -REALISTIC_BOUND) && 
+                                                      (prevSeg->maxSpaceLimit < REALISTIC_BOUND);
+                        
+                        double overlapStart = std::max(currSegment->minSpaceLimit, prevSeg->minSpaceLimit);
+                        double overlapEnd = std::min(currSegment->maxSpaceLimit, prevSeg->maxSpaceLimit);
+                        double overlapSize = overlapEnd - overlapStart;
+                        
+#ifdef NUDGE_DEBUG
+                        fprintf(stderr, "  - COMMON ENDPOINT: Connectors %d and %d share common endpoint\n",
+                                currSegment->connRef->id(), prevSeg->connRef->id());
+                        fprintf(stderr, "    Checking feasibility:\n");
+                        fprintf(stderr, "    - Curr segment range: [%.2f, %.2f] %s\n", 
+                                currSegment->minSpaceLimit, currSegment->maxSpaceLimit,
+                                currHasRealisticBounds ? "(realistic)" : "(UNREALISTIC)");
+                        fprintf(stderr, "    - Prev segment range: [%.2f, %.2f] %s\n",
+                                prevSeg->minSpaceLimit, prevSeg->maxSpaceLimit,
+                                prevHasRealisticBounds ? "(realistic)" : "(UNREALISTIC)");
+                        fprintf(stderr, "    - Overlap range: [%.2f, %.2f], size: %.2f\n",
+                                overlapStart, overlapEnd, overlapSize);
+#endif
+                        
+                        // Only create equality constraint if:
+                        // 1. Both segments have realistic bounds (not free-floating)
+                        // 2. There's sufficient overlap
+                        if (currHasRealisticBounds && prevHasRealisticBounds && 
+                            overlapSize >= baseSepDist)
+                        {
+                            // Feasible to coalesce - create equality constraint
+                            thisSepDist = 0;
+                            equality = true;
+#ifdef NUDGE_DEBUG
+                            fprintf(stderr, "    - FEASIBLE: Creating equality constraint (overlap %.2f >= %.2f)\n",
+                                    overlapSize, baseSepDist);
+#endif
+                        }
+                        else
+                        {
+                            // Not feasible to coalesce - skip this constraint entirely
+                            // to avoid creating unsatisfiable constraint systems
+#ifdef NUDGE_DEBUG
+                            if (!currHasRealisticBounds || !prevHasRealisticBounds)
+                            {
+                                fprintf(stderr, "    - NOT FEASIBLE: Segment has unrealistic bounds\n");
+                            }
+                            else
+                            {
+                                fprintf(stderr, "    - NOT FEASIBLE: Insufficient overlap (%.2f < %.2f)\n",
+                                        overlapSize, baseSepDist);
+                            }
+                            fprintf(stderr, "    - Skipping constraint creation for these segments\n");
+#endif
+                            continue;  // Skip to next segment pair
+                        }
+                    }
+                    else
+                    {
+#ifdef NUDGE_DEBUG
+                        fprintf(stderr, "  - NO COMMON ENDPOINT: Will nudge apart with distance %.2f\n", thisSepDist);
+                        fprintf(stderr, "    nudgeSharedPathsWithCommonEnd = %s\n", 
+                                nudgeSharedPathsWithCommonEnd ? "true" : "false");
+                        fprintf(stderr, "    pair (%d,%d) in common endpoints set = %s\n",
+                                currSegment->connRef->id(), prevSeg->connRef->id(),
+                                (m_shared_path_connectors_with_common_endpoints.count(
+                                    UnsignedPair(currSegment->connRef->id(), prevSeg->connRef->id())) > 0) ? "yes" : "no");
+#endif
                     }
 
                     Constraint *constraint = new Constraint(prevVar,
                             vs[index], thisSepDist, equality);
                     cs.push_back(constraint);
+                    
+#ifdef NUDGE_DEBUG
+                    fprintf(stderr, "  - CONSTRAINT: Created %s constraint with distance %.2f\n",
+                            equality ? "equality" : "separation", thisSepDist);
+#endif
+                    
                     if (thisSepDist)
                     {
                         // Add to the list of gap constraints so we can
@@ -2838,6 +3004,62 @@ void ImproveOrthogonalRoutes::nudgeOrthogonalRoutes(size_t dimension,
 
             prevVars.push_back(&(*currSegment));
         }
+
+        // DIAGNOSTIC LOGGING: Show all constraints
+#ifdef NUDGE_DEBUG
+        fprintf(stderr, "\n[CONSTRAINTS] Created %zu constraints:\n", cs.size());
+        for (size_t i = 0; i < cs.size(); ++i)
+        {
+            Constraint *c = cs[i];
+            fprintf(stderr, "  cs[%zu]: ", i);
+            
+            // Find which variables/segments these are
+            int leftIdx = -1, rightIdx = -1;
+            for (size_t j = 0; j < vs.size(); ++j)
+            {
+                if (vs[j] == c->left) leftIdx = j;
+                if (vs[j] == c->right) rightIdx = j;
+            }
+            
+            if (c->equality)
+            {
+                fprintf(stderr, "vs[%d] == vs[%d]", leftIdx, rightIdx);
+            }
+            else
+            {
+                fprintf(stderr, "vs[%d] + %.2f <= vs[%d]", leftIdx, c->gap, rightIdx);
+            }
+            
+            // Add segment info if available
+            if (c->left->id == freeSegmentID)
+            {
+                for (ShiftSegmentList::iterator it = currentRegion.begin(); 
+                     it != currentRegion.end(); ++it)
+                {
+                    NudgingShiftSegment *seg = static_cast<NudgingShiftSegment *>(*it);
+                    if (seg->variable == c->left)
+                    {
+                        fprintf(stderr, " (left=conn%d)", seg->connRef->id());
+                        break;
+                    }
+                }
+            }
+            if (c->right->id == freeSegmentID)
+            {
+                for (ShiftSegmentList::iterator it = currentRegion.begin(); 
+                     it != currentRegion.end(); ++it)
+                {
+                    NudgingShiftSegment *seg = static_cast<NudgingShiftSegment *>(*it);
+                    if (seg->variable == c->right)
+                    {
+                        fprintf(stderr, " (right=conn%d)", seg->connRef->id());
+                        break;
+                    }
+                }
+            }
+            fprintf(stderr, "\n");
+        }
+#endif
 
         std::list<PotentialSegmentConstraint> potentialConstraints;
         if (justUnifying)
@@ -2876,11 +3098,84 @@ void ImproveOrthogonalRoutes::nudgeOrthogonalRoutes(size_t dimension,
 
         typedef std::pair<size_t, size_t> UnsatisfiedRange;
         std::list<UnsatisfiedRange> unsatisfiedRanges;
+        
+        // DIAGNOSTIC LOGGING: Track solver iterations
+        int solverIteration = 0;
+#ifdef NUDGE_DEBUG
+        fprintf(stderr, "\n[SOLVER] Starting constraint solving for %zu segments\n", currentRegion.size());
+        fprintf(stderr, "  - Initial separation distance: %.2f\n", sepDist);
+#endif
+        
         do
         {
+            solverIteration++;
+#ifdef NUDGE_DEBUG
+            fprintf(stderr, "\n[SOLVER ITERATION %d] Separation distance: %.2f\n", solverIteration, sepDist);
+            
+            // Log variables before solving
+            fprintf(stderr, "  Variables before solving:\n");
+            for (size_t i = 0; i < vs.size(); ++i)
+            {
+                fprintf(stderr, "    vs[%zu]: id=%d, desired=%.2f, weight=%.6f", 
+                        i, vs[i]->id, vs[i]->desiredPosition, vs[i]->weight);
+                if (vs[i]->id == freeSegmentID)
+                {
+                    // Find which segment this corresponds to
+                    size_t segIdx = 0;
+                    for (ShiftSegmentList::iterator it = currentRegion.begin(); 
+                         it != currentRegion.end(); ++it, ++segIdx)
+                    {
+                        NudgingShiftSegment *seg = static_cast<NudgingShiftSegment *>(*it);
+                        if (seg->variable == vs[i])
+                        {
+                            fprintf(stderr, " (conn %d)", seg->connRef->id());
+                            break;
+                        }
+                    }
+                }
+                else if (vs[i]->id == channelLeftID)
+                {
+                    fprintf(stderr, " (channel left boundary)");
+                }
+                else if (vs[i]->id == channelRightID)
+                {
+                    fprintf(stderr, " (channel right boundary)");
+                }
+                fprintf(stderr, "\n");
+            }
+            
             IncSolver f(vs, cs);
             f.solve();
+            
+            // Log variables after solving
+            fprintf(stderr, "  Variables after solving:\n");
+            for (size_t i = 0; i < vs.size(); ++i)
+            {
+                fprintf(stderr, "    vs[%zu]: final=%.2f (moved %.2f from desired %.2f)",
+                        i, vs[i]->finalPosition, 
+                        vs[i]->finalPosition - vs[i]->desiredPosition,
+                        vs[i]->desiredPosition);
+                if (vs[i]->id == freeSegmentID)
+                {
+                    // Find which segment this corresponds to
+                    size_t segIdx = 0;
+                    for (ShiftSegmentList::iterator it = currentRegion.begin(); 
+                         it != currentRegion.end(); ++it, ++segIdx)
+                    {
+                        NudgingShiftSegment *seg = static_cast<NudgingShiftSegment *>(*it);
+                        if (seg->variable == vs[i])
+                        {
+                            fprintf(stderr, " (conn %d)", seg->connRef->id());
+                            break;
+                        }
+                    }
+                }
+                fprintf(stderr, "\n");
+            }
+#endif
 
+            // Determine if the problem was satisfied.
+            satisfied = true;
             for (size_t i = 0; i < vs.size(); ++i)
             {
                 // For each variable...
@@ -2890,19 +3185,18 @@ void ImproveOrthogonalRoutes::nudgeOrthogonalRoutes(size_t dimension,
                     if (fabs(vs[i]->finalPosition -
                             vs[i]->desiredPosition) > 0.0001)
                     {
+                        // and it is not at it's desired position, then
+                        // we consider the problem to be unsatisfied.
+                        satisfied = false;
+
                         // We record ranges of unsatisfied variables based on
                         // the channel edges.
                         if (vs[i]->id == channelLeftID)
                         {
                             // This is the left-hand-side of a channel.
-                            if ((unsatisfiedRanges.empty() ||
+                            if (unsatisfiedRanges.empty() ||
                                     (unsatisfiedRanges.back().first !=
                                     unsatisfiedRanges.back().second))
-                                    // the next variable can also have id different from `channelRightID`
-                                    // e.g. see `orthogonal/nudging` test, there is a case when the next node has id
-                                    // `freeSegmentID`. Why?
-                                    // Nevertheless, this filtering doesn't affect end result.
-                                    && vs[i + 1]->id == channelRightID)
                             {
                                 // There are no existing unsatisfied ranges,
                                 // or there are but they are a valid range
@@ -2925,13 +3219,9 @@ void ImproveOrthogonalRoutes::nudgeOrthogonalRoutes(size_t dimension,
                                 // range begins at the previous variable
                                 // which should be a left channel side.
                                 COLA_ASSERT(i > 0);
-                                // the previous variable can also have id different from `channelLeftID`. Why?
-                                // Nevertheless, this filtering doesn't affect end result.
-                                if (vs[i - 1]->id == channelLeftID)
-                                {
-                                    unsatisfiedRanges.push_back(
-                                            std::make_pair(i - 1, i));
-                                }
+                                COLA_ASSERT(vs[i - 1]->id == channelLeftID);
+                                unsatisfiedRanges.push_back(
+                                        std::make_pair(i - 1, i));
                             }
                             else
                             {
@@ -2959,9 +3249,6 @@ void ImproveOrthogonalRoutes::nudgeOrthogonalRoutes(size_t dimension,
                     }
                 }
             }
-
-            // Determine if the problem was satisfied.
-            satisfied = unsatisfiedRanges.empty();
 
 #ifdef NUDGE_DEBUG
             if (!satisfied)
@@ -3039,8 +3326,21 @@ void ImproveOrthogonalRoutes::nudgeOrthogonalRoutes(size_t dimension,
             {
                 if (!satisfied)
                 {
+                    COLA_ASSERT(unsatisfiedRanges.size() > 0);
                     // Reduce the separation distance.
+                    double oldSepDist = sepDist;
                     sepDist -= (baseSepDist / reductionSteps);
+                    
+                    // DIAGNOSTIC LOGGING: Track constraint relaxation
+#ifdef NUDGE_DEBUG
+                    fprintf(stderr, "\n[SOLVER UNSATISFIED] Reducing separation distance\n");
+                    fprintf(stderr, "  - Old separation: %.2f\n", oldSepDist);
+                    fprintf(stderr, "  - New separation: %.2f\n", sepDist);
+                    fprintf(stderr, "  - Reduction step: %.2f (baseSepDist=%.2f / reductionSteps=%.2f)\n",
+                            baseSepDist / reductionSteps, baseSepDist, reductionSteps);
+                    fprintf(stderr, "  - Unsatisfied ranges:\n");
+#endif
+                    
 #ifndef NDEBUG
                     for (std::list<UnsatisfiedRange>::iterator it =
                             unsatisfiedRanges.begin();
@@ -3060,6 +3360,18 @@ void ImproveOrthogonalRoutes::nudgeOrthogonalRoutes(size_t dimension,
                     }
                     fprintf(stderr, "unsatisfied, trying %g\n", sepDist);
 #endif
+#ifdef NUDGE_DEBUG
+                    for (std::list<UnsatisfiedRange>::iterator it =
+                            unsatisfiedRanges.begin();
+                            it != unsatisfiedRanges.end(); ++it)
+                    {
+                        fprintf(stderr, "    Range [%zu,%zu]: vs[%zu]=%.2f to vs[%zu]=%.2f\n",
+                                it->first, it->second,
+                                it->first, vs[it->first]->desiredPosition,
+                                it->second, vs[it->second]->desiredPosition);
+                    }
+#endif
+                    
                     // And rewrite all the gap constraints to have the new
                     // reduced separation distance.
                     bool withinUnsatisfiedGroup = false;
@@ -3098,6 +3410,35 @@ void ImproveOrthogonalRoutes::nudgeOrthogonalRoutes(size_t dimension,
             }
         }
         while (!satisfied && (sepDist > 0.0001));
+
+        // DIAGNOSTIC LOGGING: Solver complete
+#ifdef NUDGE_DEBUG
+        fprintf(stderr, "\n[SOLVER COMPLETE] Final results:\n");
+        fprintf(stderr, "  - Total iterations: %d\n", solverIteration);
+        fprintf(stderr, "  - Final separation distance: %.2f (started at %.2f)\n", sepDist, baseSepDist);
+        fprintf(stderr, "  - Satisfied: %s\n", satisfied ? "YES" : "NO (gave up at sepDist <= 0.0001)");
+        fprintf(stderr, "  - Final positions:\n");
+        for (size_t i = 0; i < vs.size(); ++i)
+        {
+            if (vs[i]->id == freeSegmentID)
+            {
+                // Find which segment this corresponds to
+                for (ShiftSegmentList::iterator it = currentRegion.begin(); 
+                     it != currentRegion.end(); ++it)
+                {
+                    NudgingShiftSegment *seg = static_cast<NudgingShiftSegment *>(*it);
+                    if (seg->variable == vs[i])
+                    {
+                        fprintf(stderr, "    Conn %d: %.2f (was %.2f, moved %.2f)\n",
+                                seg->connRef->id(), vs[i]->finalPosition,
+                                vs[i]->desiredPosition, 
+                                vs[i]->finalPosition - vs[i]->desiredPosition);
+                        break;
+                    }
+                }
+            }
+        }
+#endif
 
         if (satisfied)
         {
@@ -3252,6 +3593,32 @@ void ImproveOrthogonalRoutes::buildOrthogonalNudgingOrderInfo(void)
                 // common end point.
                 m_shared_path_connectors_with_common_endpoints.insert(
                         UnsignedPair(conn->id(), conn2->id()));
+                        
+#ifdef NUDGE_DEBUG
+                // DIAGNOSTIC LOGGING: Track common endpoint detection
+                fprintf(stderr, "[COMMON ENDPOINT DETECTED] Connectors %d and %d share path at endpoint\n",
+                        conn->id(), conn2->id());
+                fprintf(stderr, "  - crossingFlags = 0x%x\n", crossingFlags);
+                fprintf(stderr, "  - CROSSING_SHARES_PATH = %s\n", 
+                        (crossingFlags & CROSSING_SHARES_PATH) ? "yes" : "no");
+                fprintf(stderr, "  - CROSSING_SHARES_PATH_AT_END = %s\n",
+                        (crossingFlags & CROSSING_SHARES_PATH_AT_END) ? "yes" : "no");
+                fprintf(stderr, "  - CROSSING_SHARES_FIXED_SEGMENT = %s\n",
+                        (crossingFlags & CROSSING_SHARES_FIXED_SEGMENT) ? "yes" : "no");
+#endif
+            }
+            else if (buildSharedPathInfo)
+            {
+#ifdef NUDGE_DEBUG
+                // DIAGNOSTIC LOGGING: Track why common endpoint not detected
+                fprintf(stderr, "[NO COMMON ENDPOINT] Connectors %d and %d\n", conn->id(), conn2->id());
+                fprintf(stderr, "  - crossingFlags = 0x%x\n", crossingFlags);
+                fprintf(stderr, "  - crossings = %d\n", crossings);
+                fprintf(stderr, "  - CROSSING_SHARES_PATH = %s\n", 
+                        (crossingFlags & CROSSING_SHARES_PATH) ? "yes" : "no");
+                fprintf(stderr, "  - CROSSING_SHARES_PATH_AT_END = %s\n",
+                        (crossingFlags & CROSSING_SHARES_PATH_AT_END) ? "yes" : "no");
+#endif
             }
         }
     }
