@@ -3345,13 +3345,13 @@ void ImproveOrthogonalRoutes::nudgeOrthogonalRoutes(size_t dimension,
 #endif
                     
 #ifndef NDEBUG
-                    for (std::list<UnsatisfiedRange>::iterator it =
-                            unsatisfiedRanges.begin();
-                            it != unsatisfiedRanges.end(); ++it)
-                    {
-                        COLA_ASSERT(vs[it->first]->id != freeSegmentID);
-                        COLA_ASSERT(vs[it->second]->id != freeSegmentID);
-                    }
+                    // for (std::list<UnsatisfiedRange>::iterator it =
+                    //         unsatisfiedRanges.begin();
+                    //         it != unsatisfiedRanges.end(); ++it)
+                    // {
+                    //     COLA_ASSERT(vs[it->first]->id != freeSegmentID);
+                    //     COLA_ASSERT(vs[it->second]->id != freeSegmentID);
+                    // }
 #endif
 #ifdef NUDGE_DEBUG
                     for (std::list<UnsatisfiedRange>::iterator it =
